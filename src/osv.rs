@@ -1,10 +1,25 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
+use std::time::Duration;
 
 use crate::{Dependency, Ecosystem, Finding, FindingDetails, FindingKind, Severity};
 
 const OSV_BATCH_URL: &str = "https://api.osv.dev/v1/querybatch";
-const BATCH_SIZE: usize = 1000; // OSV API limit per batch
+const BATCH_SIZE: usize = 1000;
+const OSV_TIMEOUT_SECS: u64 = 30;
+
+/// Shared HTTP client with timeout — created once, reused across all batches
+fn osv_client() -> &'static reqwest::blocking::Client {
+    static CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(OSV_TIMEOUT_SECS))
+            .user_agent("supplyify")
+            .build()
+            .expect("Failed to build HTTP client")
+    })
+}
 
 /// Query OSV.dev for known vulnerabilities across a set of dependencies
 pub fn query_batch(deps: &[&Dependency]) -> Vec<Finding> {
@@ -14,7 +29,6 @@ pub fn query_batch(deps: &[&Dependency]) -> Vec<Finding> {
 
     let mut all_findings = Vec::new();
 
-    // Process in batches of BATCH_SIZE
     for chunk in deps.chunks(BATCH_SIZE) {
         match query_osv_batch(chunk) {
             Ok(findings) => all_findings.extend(findings),
@@ -42,13 +56,11 @@ fn query_osv_batch(deps: &[&Dependency]) -> Result<Vec<Finding>> {
 
     let request = OsvBatchRequest { queries };
 
-    let client = reqwest::blocking::Client::new();
-    let resp = client
+    let resp = osv_client()
         .post(OSV_BATCH_URL)
         .json(&request)
-        .header("User-Agent", "supplyify")
         .send()
-        .context("OSV API request failed")?;
+        .context("OSV API request failed (30s timeout)")?;
 
     if !resp.status().is_success() {
         anyhow::bail!("OSV API returned HTTP {}", resp.status());
