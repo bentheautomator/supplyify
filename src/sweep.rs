@@ -20,7 +20,10 @@ const PROJECT_MARKERS: &[&str] = &[
 pub fn discover_projects(root: &Path) -> Vec<PathBuf> {
     let mut projects = Vec::new();
 
-    for entry in WalkDir::new(root)
+    // Canonicalize to resolve "." and avoid filtering out the root entry
+    let root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+
+    for entry in WalkDir::new(&root)
         .follow_links(false)
         .into_iter()
         .filter_entry(|e| {
