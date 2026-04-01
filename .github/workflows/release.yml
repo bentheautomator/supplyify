@@ -1,0 +1,101 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+env:
+  BINARY_NAME: supplyify
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            platform: darwin-arm64
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            platform: linux-amd64
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            platform: linux-arm64
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            platform: windows-amd64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-compilation tools (Linux ARM64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Rename binary (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          cp target/${{ matrix.target }}/release/${{ env.BINARY_NAME }} \
+             ${{ env.BINARY_NAME }}-${{ matrix.platform }}
+
+      - name: Rename binary (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          cp target/${{ matrix.target }}/release/${{ env.BINARY_NAME }}.exe `
+             ${{ env.BINARY_NAME }}-${{ matrix.platform }}.exe
+
+      - name: Compute SHA-256 (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+            shasum -a 256 ${{ env.BINARY_NAME }}-${{ matrix.platform }} > ${{ env.BINARY_NAME }}-${{ matrix.platform }}.sha256
+          else
+            sha256sum ${{ env.BINARY_NAME }}-${{ matrix.platform }} > ${{ env.BINARY_NAME }}-${{ matrix.platform }}.sha256
+          fi
+
+      - name: Compute SHA-256 (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          Get-FileHash ${{ env.BINARY_NAME }}-${{ matrix.platform }}.exe -Algorithm SHA256 | Select-Object -ExpandProperty Hash > ${{ env.BINARY_NAME }}-${{ matrix.platform }}.exe.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.platform }}
+          path: |
+            ${{ env.BINARY_NAME }}-${{ matrix.platform }}*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create ${{ github.ref_name }} \
+            --title "${{ env.BINARY_NAME }} ${{ github.ref_name }}" \
+            --generate-notes \
+            artifacts/*

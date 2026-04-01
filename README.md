@@ -133,6 +133,20 @@ The [axios npm package compromise](https://socket.dev/blog/axios-npm-package-com
 
 supplyify was built to detect this class of attack in seconds, offline, across all your projects at once.
 
+## About the Author
+
+Built by [Ben The Automator](https://github.com/bentheautomator) — security engineer and founder of [Automator Solutions](https://manualnomore.site). Ben builds AI-powered security and automation tools, including [codemap](https://github.com/bentheautomator/codemap) (code intelligence), [agentdb](https://github.com/bentheautomator/agentdb) (agent tracking), and the [AI Toolkit](https://github.com/bentheautomator/ai-toolkit) (30+ local-first AI tools).
+
+supplyify was born from the axios compromise incident in March 2026, when Ben realized the industry needed a fast, offline-first scanner that could sweep hundreds of projects in under a second — not another SaaS dashboard that requires uploading your lockfiles to a third party.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to add indicators, parsers, and heuristics.
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for vulnerability reporting.
+
 ## License
 
 MIT
