@@ -1,23 +1,83 @@
 # supplyify
 
-Fast supply chain attack detection for npm, Cargo, and pip projects.
+Fast, offline-first supply chain attack detection for npm, Cargo, and pip projects.
 
-Scans your lockfiles against known malicious packages, queries the [OSV.dev](https://osv.dev) vulnerability database, and runs offline heuristics — all in milliseconds.
+Scans your lockfiles against known malicious packages, queries [OSV.dev](https://osv.dev) (80,000+ advisories), and runs offline heuristics — **all in milliseconds.**
 
 ```
-supplyify scan .
-
-supplyify — scanning /path/to/project
+$ supplyify scan .
 
 CRITICAL   axios@1.14.1 — Account takeover, drops RAT via plain-crypto-js postinstall
   ├─ C2: sfrclak.com:8000, 142.11.206.73
   ├─ Ref: https://socket.dev/blog/axios-npm-package-compromised
   └─ Tags: rat, postinstall, account-takeover
 
-──────────────────────────────────
-Scanned: /path/to/project (npm) | 847 deps | 3ms
-Results: 1 critical, 0 high, 0 medium, 0 low
+CRITICAL   axios@1.14.1 — [MAL-2026-2307] Malicious axios version (via OSV.dev)
+  └─ Tags: osv, malware
+
+Scanned: ./my-project (npm) | 847 deps | 3ms
+Results: 2 critical, 0 high, 0 medium, 0 low
 ```
+
+## The Problem
+
+On March 27, 2026, the [axios npm package was compromised](https://socket.dev/blog/axios-npm-package-compromised). An attacker gained access to a maintainer's account and published malicious versions `1.14.1` and `0.30.4`. These versions silently installed `plain-crypto-js` via a postinstall script — a remote access trojan that phoned home to `sfrclak.com:8000`, giving the attacker control of every machine that ran `npm install`.
+
+axios has **50 million weekly downloads**. The malicious versions were live for hours before anyone noticed.
+
+When this happened, most developers had the same question: **am I affected?** The answer required manually checking lockfiles across every project, one at a time. 50 projects means 50 manual checks. If you're a team lead, multiply by every developer on the team.
+
+Existing tools didn't help. SaaS scanners require uploading your lockfiles to a third party. GitHub's Dependabot only covers repos hosted on GitHub. `npm audit` only checks one project at a time and misses malicious packages that aren't in the npm advisory database yet.
+
+## How supplyify Solves This
+
+**One command. Every project. Milliseconds.**
+
+```bash
+$ supplyify sweep ~/projects --parallel 8
+
+Sweeping ~/projects ... found 194 projects
+
+  my-app          CRITICAL  axios@1.14.1 (RAT dropper)
+  dashboard       CLEAN     214 deps
+  api-server      CLEAN     89 deps
+  ...
+
+Summary: 194 projects | 82,780 total deps | 1 critical | 518ms
+```
+
+supplyify works in three layers:
+
+1. **Bundled indicators** (~3ms, offline) — known malicious packages compiled into the binary. Zero network calls. Catches known threats instantly.
+2. **OSV.dev** (~500ms, online) — queries Google's open vulnerability database covering 80,000+ advisories across every major ecosystem. Catches everything that's been publicly disclosed.
+3. **Heuristics** (~100ms, offline) — detects suspicious postinstall scripts and version anomalies. Catches threats *before* advisories are published.
+
+No account. No lockfiles uploaded to third parties. No SaaS dashboard. Just a binary that tells you the truth in milliseconds.
+
+## Keeping Indicators Current
+
+New supply chain attacks happen constantly. Staying current is one command:
+
+```bash
+$ supplyify update
+
+supplyify Checking for indicator updates...
+
+  New indicators:
+    CRITICAL evil-pkg@2.0.1 — Backdoor installed via postinstall
+      Ref: https://socket.dev/blog/evil-pkg-analysis
+    CRITICAL typo-lodash@4.17.22 — Typosquat exfiltrating env vars
+
+  ✓ 2 new indicators added (total: 47)
+  ✓ Saved to ~/.config/supplyify/indicators.toml
+```
+
+Three indicator sources work together:
+- **Bundled indicators** ship with every release — always available, zero setup
+- **`supplyify update`** pulls the latest curated zero-day indicators from the [supplyify-indicators](https://github.com/bentheautomator/supplyify-indicators) community feed
+- **OSV.dev** is queried live on every scan — 80,000+ advisories updated continuously by Google, GitHub, and the open source community
+
+Even if you never run `supplyify update`, the live OSV.dev layer catches everything in public advisory databases. The bundled and community indicators add zero-day coverage for threats that haven't hit public feeds yet.
 
 ## Install
 
@@ -126,12 +186,6 @@ severity = "critical"
 description = "Known malicious package"
 date = "2026-04-01"
 ```
-
-## Motivated by
-
-The [axios npm package compromise](https://socket.dev/blog/axios-npm-package-compromised) (March 2026), where malicious versions 1.14.1 and 0.30.4 were published via account takeover, silently installing a RAT through a `plain-crypto-js` postinstall script.
-
-supplyify was built to detect this class of attack in seconds, offline, across all your projects at once.
 
 ## About the Author
 
