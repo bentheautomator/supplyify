@@ -1,5 +1,4 @@
 pre-commit:
-  parallel: true
   commands:
     fmt:
       glob: "*.rs"
@@ -7,6 +6,24 @@ pre-commit:
     clippy:
       glob: "*.rs"
       run: cargo clippy -- -D warnings
+    version-bump-check:
+      run: |
+        # If any .rs file is staged, Cargo.toml version must also be staged
+        RS_CHANGED=$(git diff --cached --name-only -- '*.rs' | head -1)
+        if [ -n "$RS_CHANGED" ]; then
+          VERSION_CHANGED=$(git diff --cached -- Cargo.toml | grep '^+version' | head -1)
+          if [ -z "$VERSION_CHANGED" ]; then
+            # Allow docs/style/refactor/test/chore commits without version bump
+            MSG=$(cat .git/COMMIT_EDITMSG 2>/dev/null || echo "")
+            if echo "$MSG" | grep -qE '^(docs|style|refactor|test|chore|ci)\('; then
+              exit 0
+            fi
+            echo "ERROR: Source files changed but Cargo.toml version was not bumped."
+            echo "Bump the version in Cargo.toml before committing feat/fix changes."
+            echo "Skip this check for non-behavioral changes: docs|style|refactor|test|chore"
+            exit 1
+          fi
+        fi
 
 pre-push:
   commands:

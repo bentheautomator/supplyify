@@ -3,7 +3,7 @@ use colored::Colorize;
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const RELEASES_API: &str = "https://api.github.com/repos/bentheautomator/supplyify/releases/latest";
 
-/// Check toolshed registry for a newer version of supplyify
+/// Check GitHub releases for a newer version of supplyify
 pub fn run() {
     let latest = match fetch_latest_version() {
         Some(v) => v,
@@ -29,7 +29,10 @@ pub fn run() {
             latest.green(),
             CURRENT_VERSION.dimmed()
         );
-        eprintln!("  Update: {}", "toolshed update supplyify".cyan());
+        eprintln!(
+            "  Download: {}",
+            "https://github.com/bentheautomator/supplyify/releases/latest".cyan()
+        );
     }
 }
 
