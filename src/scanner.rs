@@ -58,7 +58,13 @@ pub fn scan(config: &Config, path: &Path) -> ScanResult {
                     },
                     references: mv.references.clone(),
                     tags: mv.tags.clone(),
-                    lockfile_path: None,
+                    advisory_url: mv.references.first().cloned(),
+                    remediation: Some(format!(
+                        "IMMEDIATELY remove {}@{}. This is a confirmed malicious version. \
+                         Rotate any secrets or credentials on affected machines.",
+                        dep.name, dep.version
+                    )),
+                    ..Default::default()
                 },
             });
         }
@@ -74,6 +80,12 @@ pub fn scan(config: &Config, path: &Path) -> ScanResult {
                 details: FindingDetails {
                     references: mp.references.clone(),
                     tags: mp.tags.clone(),
+                    advisory_url: mp.references.first().cloned(),
+                    remediation: Some(format!(
+                        "IMMEDIATELY remove {}. This entire package is malicious. \
+                         Run: npm uninstall {} / cargo rm {} / pip uninstall {}",
+                        dep.name, dep.name, dep.name, dep.name
+                    )),
                     ..Default::default()
                 },
             });
@@ -87,7 +99,14 @@ pub fn scan(config: &Config, path: &Path) -> ScanResult {
                 version: dep.version.clone(),
                 kind: FindingKind::SuspiciousRange,
                 description: sr.description.clone(),
-                details: FindingDetails::default(),
+                details: FindingDetails {
+                    remediation: Some(format!(
+                        "Upgrade {} to a version outside the suspicious range. \
+                         This version was published during a known compromise window.",
+                        dep.name
+                    )),
+                    ..Default::default()
+                },
             });
         }
     }

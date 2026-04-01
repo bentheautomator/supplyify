@@ -71,6 +71,7 @@ fn query_osv_batch(deps: &[&Dependency]) -> Result<Vec<Finding>> {
 fn osv_vuln_to_finding(dep: &Dependency, vuln: &OsvVuln) -> Finding {
     let severity = classify_osv_severity(vuln);
     let is_malware = vuln.id.starts_with("MAL-");
+    let is_ghsa = vuln.id.starts_with("GHSA-");
 
     let kind = if is_malware {
         FindingKind::MaliciousPackage
@@ -81,16 +82,23 @@ fn osv_vuln_to_finding(dep: &Dependency, vuln: &OsvVuln) -> Finding {
     let description = vuln
         .summary
         .clone()
-        .or_else(|| vuln.details.as_ref().map(|d| d.chars().take(120).collect()))
+        .or_else(|| vuln.details.as_ref().map(|d| d.chars().take(200).collect()))
         .unwrap_or_else(|| vuln.id.clone());
 
+    // Collect all references (not just 3)
     let references: Vec<String> = vuln
         .references
         .iter()
         .filter(|r| r.url_type == "ADVISORY" || r.url_type == "WEB")
-        .take(3)
         .map(|r| r.url.clone())
         .collect();
+
+    // Primary advisory URL — OSV page is always available
+    let advisory_url = if is_ghsa {
+        format!("https://github.com/advisories/{}", vuln.id)
+    } else {
+        format!("https://osv.dev/vulnerability/{}", vuln.id)
+    };
 
     let mut tags = Vec::new();
     tags.push("osv".to_string());
@@ -100,6 +108,9 @@ fn osv_vuln_to_finding(dep: &Dependency, vuln: &OsvVuln) -> Finding {
 
     let cve = vuln.aliases.iter().find(|a| a.starts_with("CVE-")).cloned();
 
+    // Generate remediation guidance based on finding type
+    let remediation = generate_remediation(dep, vuln, is_malware, &cve);
+
     Finding {
         severity,
         package: dep.name.clone(),
@@ -108,10 +119,60 @@ fn osv_vuln_to_finding(dep: &Dependency, vuln: &OsvVuln) -> Finding {
         description: format!("[{}] {}", vuln.id, description),
         details: FindingDetails {
             cve,
+            osv_id: Some(vuln.id.clone()),
+            advisory_url: Some(advisory_url),
             references,
             tags,
+            remediation: Some(remediation),
             ..Default::default()
         },
+    }
+}
+
+/// Generate actionable remediation text for a finding
+fn generate_remediation(
+    dep: &Dependency,
+    vuln: &OsvVuln,
+    is_malware: bool,
+    cve: &Option<String>,
+) -> String {
+    if is_malware {
+        return format!(
+            "IMMEDIATELY remove {}@{} from your project. \
+             This package is confirmed malicious. \
+             Run: npm uninstall {} / cargo rm {} / pip uninstall {} — \
+             then audit your system for indicators of compromise. \
+             Rotate any secrets or credentials that may have been exposed.",
+            dep.name, dep.version, dep.name, dep.name, dep.name
+        );
+    }
+
+    // Check if there's a fixed version in the affected ranges
+    let fixed_version = vuln
+        .affected
+        .iter()
+        .flat_map(|a| a.ranges.iter())
+        .flat_map(|r| r.events.iter())
+        .find_map(|e| e.get("fixed").and_then(|v| v.as_str()))
+        .map(|s| s.to_string());
+
+    match fixed_version {
+        Some(fixed) => format!(
+            "Upgrade {}@{} to {} or later. \
+             Details: https://osv.dev/vulnerability/{}",
+            dep.name, dep.version, fixed, vuln.id
+        ),
+        None => {
+            let osv_url = format!("https://osv.dev/vulnerability/{}", vuln.id);
+            format!(
+                "Review {}@{} for known vulnerability {}. \
+                 No fixed version identified — check {} for alternatives or patches.",
+                dep.name,
+                dep.version,
+                cve.as_deref().unwrap_or(&vuln.id),
+                osv_url
+            )
+        }
     }
 }
 
@@ -215,6 +276,20 @@ struct OsvVuln {
     severity: Option<Vec<OsvSeverity>>,
     #[serde(default)]
     database_specific: Option<OsvDbSpecific>,
+    #[serde(default)]
+    affected: Vec<OsvAffected>,
+}
+
+#[derive(Deserialize)]
+struct OsvAffected {
+    #[serde(default)]
+    ranges: Vec<OsvRange>,
+}
+
+#[derive(Deserialize)]
+struct OsvRange {
+    #[serde(default)]
+    events: Vec<serde_json::Map<String, serde_json::Value>>,
 }
 
 #[derive(Deserialize)]

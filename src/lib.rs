@@ -102,12 +102,18 @@ pub struct FindingDetails {
     pub c2: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cve: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub osv_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub advisory_url: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub references: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lockfile_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remediation: Option<String>,
 }
 
 /// Result of scanning a single project
