@@ -1,11 +1,13 @@
 use anyhow::Result;
 use colored::Colorize;
 use std::path::Path;
+use std::time::Instant;
 
 use supplyify::sweep as sweep_mod;
 use supplyify::{output, Config, Severity};
 
 pub fn run(config: &Config, path: &str, parallel: usize) -> Result<()> {
+    let sweep_start = Instant::now();
     let root = Path::new(path);
     if !root.exists() {
         anyhow::bail!("Path does not exist: {}", root.display());
@@ -95,7 +97,7 @@ pub fn run(config: &Config, path: &str, parallel: usize) -> Result<()> {
                 .count()
         })
         .sum();
-    let total_ms: u128 = results.iter().map(|r| r.duration_ms).max().unwrap_or(0);
+    let total_ms = sweep_start.elapsed().as_millis();
     let duration = if total_ms >= 60_000 {
         format!("{:.1}m", total_ms as f64 / 60_000.0)
     } else if total_ms >= 1_000 {
