@@ -189,11 +189,13 @@ date = "2026-04-01"
 
 ## About the Author
 
-Built by [Ben "The Automator" Christensen](https://www.linkedin.com/in/ben-the-automator-c/) (CPDE, CCP) — a cybersecurity and automation executive with 20+ years in the field. Ben is the founder of [Automator Solutions](https://automatorsolutions.com), an advisory board member at [Revelstoke Security](https://www.linkedin.com/posts/krusebob_two-leading-mdr-pros-join-revelstokes-new-activity-6980929558707412992-eG0X), and the published author of *Demystifying Automation: A Non-Technical Guide to Streamlining Your Business*.
+Built by [Ben "The Automator" Christensen](https://www.linkedin.com/in/ben-the-automator-c/) — 20+ years in AI, cybersecurity, and automation. Ben is the founder of [Automator Solutions](https://automatorsolutions.com), advises security companies on SOAR and automation strategy, and is the author of [*Demystifying Automation*](https://links.bentheautomator.com/demystifying-automation-amazon).
 
-His career spans security orchestration (SOAR), incident response automation, and building AI-powered tooling that eliminates manual work at scale — with a track record of $15M+ saved and 500,000+ hours automated across organizations. He builds and maintains a suite of open source security and developer tools including [codemap](https://github.com/bentheautomator/codemap) (code intelligence), [agentdb](https://github.com/bentheautomator/agentdb) (operational tracking), and the [AI Toolkit](https://github.com/bentheautomator/ai-toolkit) (30+ local-first AI tools).
+His work sits at the intersection of AI and security — building intelligent tooling that eliminates manual work at scale. $15M+ saved. 500,000+ hours automated. He believes the best security tools are fast, offline-first, and respect your privacy — which is why supplyify runs entirely on your machine.
 
-supplyify exists because when the axios compromise hit in March 2026, the answer to "am I affected?" shouldn't require uploading lockfiles to a SaaS vendor or checking projects one at a time. It should be one command, instant, and run entirely on your machine.
+supplyify is his first open source release, born from the axios compromise in March 2026 when the answer to "am I affected?" shouldn't have required a SaaS dashboard or checking projects one at a time.
+
+[automatewithben.com](https://automatewithben.com) | [LinkedIn](https://www.linkedin.com/in/ben-the-automator-c/) | [GitHub](https://github.com/bentheautomator)
 
 ## Contributing
 
