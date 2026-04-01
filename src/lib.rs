@@ -3,6 +3,7 @@ pub mod heuristics;
 pub mod indicators;
 pub mod osv;
 pub mod output;
+pub mod plugin;
 pub mod scanner;
 pub mod sweep;
 

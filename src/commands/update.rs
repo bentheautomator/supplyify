@@ -39,9 +39,7 @@ pub fn run(config: &Config) -> Result<()> {
             let new_versions: Vec<_> = remote
                 .malicious_version
                 .iter()
-                .filter(|mv| {
-                    !current_versions.contains(&(mv.package.clone(), mv.version.clone()))
-                })
+                .filter(|mv| !current_versions.contains(&(mv.package.clone(), mv.version.clone())))
                 .collect();
             let new_packages: Vec<_> = remote
                 .malicious_package

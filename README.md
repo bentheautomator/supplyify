@@ -197,14 +197,24 @@ supplyify is his first open source release, born from the axios compromise in Ma
 
 [automatewithben.com](https://automatewithben.com) | [LinkedIn](https://www.linkedin.com/in/ben-the-automator-c/) | [GitHub](https://github.com/bentheautomator)
 
+## Disclaimer
+
+supplyify is a detection tool, not a guarantee. No scanner catches 100% of threats. The bundled indicators, OSV.dev results, and heuristic analysis are provided on a best-effort basis. Always perform independent security reviews. This tool should augment, not replace, your security practices.
+
+See [LICENSE](LICENSE) for full terms.
+
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for how to add indicators, parsers, and heuristics.
+Contributions are welcome under the [Developer Certificate of Origin](DCO.md). See [CONTRIBUTING.md](CONTRIBUTING.md) for how to add indicators, parsers, and heuristics.
 
 ## Security
 
 See [SECURITY.md](SECURITY.md) for vulnerability reporting.
 
+## Trademark
+
+"supplyify" is a trademark of Automator Solutions. You may use the name to refer to this project, but you may not use it in a way that suggests official endorsement or affiliation without permission.
+
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE)
