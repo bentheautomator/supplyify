@@ -96,14 +96,21 @@ pub fn run(config: &Config, path: &str, parallel: usize) -> Result<()> {
         })
         .sum();
     let total_ms: u128 = results.iter().map(|r| r.duration_ms).max().unwrap_or(0);
+    let duration = if total_ms >= 60_000 {
+        format!("{:.1}m", total_ms as f64 / 60_000.0)
+    } else if total_ms >= 1_000 {
+        format!("{:.1}s", total_ms as f64 / 1_000.0)
+    } else {
+        format!("{}ms", total_ms)
+    };
 
     println!(
-        "\nSummary: {} projects | {} total deps | {} findings ({} critical) | {}ms",
+        "\nSummary: {} projects | {} total deps | {} findings ({} critical) | {}",
         results.len(),
         total_deps,
         total_findings,
         total_critical,
-        total_ms
+        duration
     );
 
     if worst_exit != 0 {

@@ -31,8 +31,12 @@ pub fn format(results: &[ScanResult]) -> String {
         out.push_str("---\n");
         let (c, h, m, l) = result.count_by_severity();
         out.push_str(&format!(
-            "SUMMARY|{} critical, {} high, {} medium, {} low | {}ms\n",
-            c, h, m, l, result.duration_ms
+            "SUMMARY|{} critical, {} high, {} medium, {} low | {}\n",
+            c,
+            h,
+            m,
+            l,
+            result.duration_display()
         ));
     }
 

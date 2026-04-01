@@ -127,6 +127,16 @@ pub struct ScanResult {
 }
 
 impl ScanResult {
+    pub fn duration_display(&self) -> String {
+        if self.duration_ms >= 60_000 {
+            format!("{:.1}m", self.duration_ms as f64 / 60_000.0)
+        } else if self.duration_ms >= 1_000 {
+            format!("{:.1}s", self.duration_ms as f64 / 1_000.0)
+        } else {
+            format!("{}ms", self.duration_ms)
+        }
+    }
+
     pub fn exit_code(&self) -> i32 {
         if self.findings.iter().any(|f| f.severity >= Severity::High) {
             1

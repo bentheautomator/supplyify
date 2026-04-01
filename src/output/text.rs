@@ -90,7 +90,7 @@ pub fn format(results: &[ScanResult]) -> String {
 
         out.push_str(&format!(
             "──────────────────────────────────\n\
-             Scanned: {} ({}) | {} deps | {}ms\n\
+             Scanned: {} ({}) | {} deps | {}\n\
              Results: {} critical, {} high, {} medium, {} low\n",
             result.project_path,
             if ecosystems.is_empty() {
@@ -99,7 +99,7 @@ pub fn format(results: &[ScanResult]) -> String {
                 ecosystems.join(", ")
             },
             result.dep_count,
-            result.duration_ms,
+            result.duration_display(),
             critical,
             high,
             medium,
