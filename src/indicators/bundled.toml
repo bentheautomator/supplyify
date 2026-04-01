@@ -1,0 +1,57 @@
+[meta]
+version = "2026-03-31"
+sources = ["bundled"]
+
+# === Known malicious package versions ===
+
+[[malicious_version]]
+ecosystem = "npm"
+package = "axios"
+version = "1.14.1"
+severity = "critical"
+description = "Account takeover — drops RAT via plain-crypto-js postinstall"
+c2 = ["sfrclak.com:8000", "142.11.206.73"]
+cve = ""
+references = ["https://socket.dev/blog/axios-npm-package-compromised"]
+date = "2026-03-30"
+tags = ["rat", "postinstall", "account-takeover"]
+
+[[malicious_version]]
+ecosystem = "npm"
+package = "axios"
+version = "0.30.4"
+severity = "critical"
+description = "Account takeover — drops RAT via plain-crypto-js postinstall (legacy branch)"
+c2 = ["sfrclak.com:8000", "142.11.206.73"]
+cve = ""
+references = ["https://socket.dev/blog/axios-npm-package-compromised"]
+date = "2026-03-30"
+tags = ["rat", "postinstall", "account-takeover"]
+
+# === Known malicious packages (entire package is bad) ===
+
+[[malicious_package]]
+ecosystem = "npm"
+package = "plain-crypto-js"
+severity = "critical"
+description = "RAT dropper disguised as crypto utility — installed by compromised axios"
+references = ["https://socket.dev/blog/axios-npm-package-compromised"]
+date = "2026-03-30"
+tags = ["rat", "dropper"]
+
+# === Known C2 infrastructure ===
+
+[[c2_indicator]]
+address = "sfrclak.com"
+port = 8000
+ip = "142.11.206.73"
+associated_campaigns = ["axios-2026-03"]
+
+# === Suspicious version ranges ===
+
+[[suspicious_range]]
+ecosystem = "npm"
+package = "axios"
+range = ">=0.30.0,<0.30.5"
+severity = "high"
+description = "Published outside normal release workflow during account takeover window"

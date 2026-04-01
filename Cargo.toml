@@ -1,0 +1,43 @@
+[package]
+name = "supplyify"
+version = "0.1.0"
+edition = "2021"
+authors = ["Ben The Automator"]
+license = "MIT"
+description = "Fast supply chain attack detection for npm, Cargo, and pip"
+repository = "https://github.com/bentheautomator/supplyify"
+keywords = ["security", "supply-chain", "npm", "cargo", "vulnerability"]
+categories = ["command-line-utilities", "development-tools"]
+
+[lib]
+name = "supplyify"
+path = "src/lib.rs"
+
+[[bin]]
+name = "supplyify"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+toml = "0.8"
+colored = "2"
+walkdir = "2"
+regex = "1"
+reqwest = { version = "0.11", default-features = false, features = ["json", "blocking", "rustls-tls"] }
+rayon = "1.10"
+semver = "1.0"
+sha2 = "0.10"
+dirs = "5"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
