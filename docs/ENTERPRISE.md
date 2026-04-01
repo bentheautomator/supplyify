@@ -69,8 +69,8 @@ For organizations managing supply chain security at scale.
 
 Interested in Enterprise? Reach out:
 
-- **Email:** enterprise@manualnomore.site
-- **Website:** [manualnomore.site](https://manualnomore.site)
+- **Email:** enterprise@supplyify.manualnomore.site
+- **Website:** [supplyify.manualnomore.site](https://supplyify.manualnomore.site)
 
 ## FAQ
 

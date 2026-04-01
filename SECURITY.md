@@ -6,7 +6,7 @@ If you discover a security vulnerability in supplyify itself (not in a package i
 
 **Do not open a public issue.**
 
-Email: **security@manualnomore.site**
+Email: **security@supplyify.manualnomore.site**
 
 Include:
 - Description of the vulnerability
