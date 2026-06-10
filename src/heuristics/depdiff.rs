@@ -42,50 +42,71 @@ pub fn scan(project_path: &Path, discovered: &[DiscoveredEcosystem]) -> Vec<Find
             continue;
         };
 
-        let old: HashMap<&str, &str> = old_deps
-            .iter()
-            .map(|dep| (dep.name.as_str(), dep.version.as_str()))
+        // Group versions by package name on both sides. A package legitimately
+        // resolves to multiple coexisting versions (very common in Cargo:
+        // getrandom 0.2 + 0.4 side by side). Comparing a single "the version"
+        // per name produces false downgrades — so we track version SETS and
+        // only call something a downgrade when the package has exactly one
+        // version on each side and it moved strictly down.
+        let mut old: HashMap<&str, Vec<&str>> = HashMap::new();
+        for dep in &old_deps {
+            old.entry(dep.name.as_str())
+                .or_default()
+                .push(dep.version.as_str());
+        }
+        let mut new_by_name: HashMap<&str, Vec<&str>> = HashMap::new();
+        for dep in &d.deps {
+            new_by_name
+                .entry(dep.name.as_str())
+                .or_default()
+                .push(dep.version.as_str());
+        }
+
+        // New packages: names absent from HEAD entirely (a new *version* of an
+        // existing package is not an injected dependency).
+        let mut new_packages: Vec<&str> = new_by_name
+            .keys()
+            .filter(|name| !old.contains_key(**name))
+            .copied()
             .collect();
 
-        let mut new_packages: Vec<&str> = Vec::new();
-        for dep in &d.deps {
-            match old.get(dep.name.as_str()) {
-                None => new_packages.push(&dep.name),
-                Some(old_version) => {
-                    // Downgrades are a classic attack: pull the target back
-                    // into a vulnerable or compromised range.
-                    if versioncmp::compare(&dep.version, old_version)
-                        == Some(std::cmp::Ordering::Less)
-                    {
-                        findings.push(Finding {
-                            severity: Severity::Medium,
-                            package: dep.name.clone(),
-                            version: dep.version.clone(),
-                            kind: FindingKind::Heuristic("dependency_downgrade".to_string()),
-                            description: format!(
-                                "Version downgrade since last commit: {} → {}",
-                                old_version, dep.version
-                            ),
-                            details: FindingDetails {
-                                tags: vec!["heuristic".to_string(), "depdiff".to_string()],
-                                lockfile_path: Some(d.lockfile.display().to_string()),
-                                remediation: Some(format!(
-                                    "Verify the downgrade of {} from {} to {} was intentional. \
-                                     Downgrade attacks reintroduce patched vulnerabilities.",
-                                    dep.name, old_version, dep.version
-                                )),
-                                ..Default::default()
-                            },
-                        });
-                    }
-                }
+        // Downgrades: only unambiguous single-version→single-version moves.
+        for (name, new_versions) in &new_by_name {
+            let (Some(old_versions), [new_version]) = (old.get(name), new_versions.as_slice())
+            else {
+                continue;
+            };
+            let [old_version] = old_versions.as_slice() else {
+                continue; // multiple coexisting versions — not a clean downgrade
+            };
+            if versioncmp::compare(new_version, old_version) == Some(std::cmp::Ordering::Less) {
+                findings.push(Finding {
+                    severity: Severity::Medium,
+                    package: name.to_string(),
+                    version: new_version.to_string(),
+                    kind: FindingKind::Heuristic("dependency_downgrade".to_string()),
+                    description: format!(
+                        "Version downgrade since last commit: {} → {}",
+                        old_version, new_version
+                    ),
+                    details: FindingDetails {
+                        tags: vec!["heuristic".to_string(), "depdiff".to_string()],
+                        lockfile_path: Some(d.lockfile.display().to_string()),
+                        remediation: Some(format!(
+                            "Verify the downgrade of {} from {} to {} was intentional. \
+                             Downgrade attacks reintroduce patched vulnerabilities.",
+                            name, old_version, new_version
+                        )),
+                        ..Default::default()
+                    },
+                });
             }
         }
 
+        new_packages.sort_unstable();
         let count = new_packages.len();
         if count > 0 && count <= NEW_DEP_NOISE_CAP {
-            let mut listed: Vec<&str> = new_packages.iter().take(MAX_LISTED).copied().collect();
-            listed.sort_unstable();
+            let listed: Vec<&str> = new_packages.iter().take(MAX_LISTED).copied().collect();
             let suffix = if count > MAX_LISTED {
                 format!(" (+{} more)", count - MAX_LISTED)
             } else {
@@ -242,6 +263,35 @@ mod tests {
         assert_eq!(down.len(), 1);
         assert_eq!(down[0].package, "lodash");
         assert_eq!(down[0].severity, Severity::Medium);
+    }
+
+    #[test]
+    fn multiple_coexisting_versions_are_not_downgrades() {
+        // Cargo routinely resolves several majors of one crate side by side.
+        // HEAD has getrandom 0.4.2; new lockfile adds 0.2.17 ALONGSIDE it
+        // (0.4.2 still present, nested under another dep). That's not a
+        // downgrade — both coexist. Distinct lockfile paths, same package name.
+        let old = r#"{"lockfileVersion":3,"packages":{
+            "":{"name":"t","version":"1.0.0"},
+            "node_modules/getrandom":{"version":"0.4.2"}
+        }}"#
+        .to_string();
+        let new = r#"{"lockfileVersion":3,"packages":{
+            "":{"name":"t","version":"1.0.0"},
+            "node_modules/getrandom":{"version":"0.4.2"},
+            "node_modules/legacy-dep/node_modules/getrandom":{"version":"0.2.17"}
+        }}"#
+        .to_string();
+        let repo = setup_repo(&old, &new);
+
+        let findings = scan(repo.path(), &discover(repo.path()));
+        assert!(
+            findings
+                .iter()
+                .all(|f| f.kind.name() != "dependency_downgrade"),
+            "coexisting versions must not be flagged as a downgrade: {:?}",
+            findings
+        );
     }
 
     #[test]
