@@ -20,6 +20,11 @@ pub struct IndicatorDb {
     pub c2_indicator: Vec<C2Indicator>,
     #[serde(default)]
     pub suspicious_range: Vec<SuspiciousRange>,
+    /// Tombstones: indicators retracted after publication (false positives,
+    /// re-secured packages). Merging is union-only, so without these a bad
+    /// indicator shipped once would live in user configs forever.
+    #[serde(default)]
+    pub revoked: Vec<RevokedIndicator>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -78,6 +83,18 @@ pub struct SuspiciousRange {
     pub range: String,
     pub severity: Severity,
     pub description: String,
+}
+
+/// A retracted indicator. `version = None` revokes a whole-package
+/// indicator; `Some(v)` revokes one malicious_version entry.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RevokedIndicator {
+    pub ecosystem: Ecosystem,
+    pub package: String,
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub reason: String,
 }
 
 impl IndicatorDb {
@@ -142,10 +159,53 @@ impl IndicatorDb {
                 self.suspicious_range.push(sr);
             }
         }
+        for rv in other.revoked {
+            if !self.revoked.iter().any(|e| {
+                e.package == rv.package && e.version == rv.version && e.ecosystem == rv.ecosystem
+            }) {
+                self.revoked.push(rv);
+            }
+        }
 
         self.meta.sources.extend(other.meta.sources);
         self.meta.sources.sort();
         self.meta.sources.dedup();
+
+        self.apply_revocations();
+    }
+
+    /// Remove indicators that have a matching tombstone.
+    pub fn apply_revocations(&mut self) {
+        let revoked = std::mem::take(&mut self.revoked);
+        self.malicious_version.retain(|mv| {
+            !revoked.iter().any(|rv| {
+                rv.ecosystem == mv.ecosystem
+                    && rv.package == mv.package
+                    && rv.version.as_deref() == Some(mv.version.as_str())
+            })
+        });
+        self.malicious_package.retain(|mp| {
+            !revoked.iter().any(|rv| {
+                rv.ecosystem == mp.ecosystem && rv.package == mp.package && rv.version.is_none()
+            })
+        });
+        self.revoked = revoked;
+    }
+
+    /// Validate the database. Returns warnings for entries that can never
+    /// match (e.g. malformed ranges) — these must be surfaced, not
+    /// silently skipped at match time.
+    pub fn validate(&self) -> Vec<String> {
+        let mut warnings = Vec::new();
+        for sr in &self.suspicious_range {
+            if !crate::versioncmp::validate_range(&sr.range) {
+                warnings.push(format!(
+                    "indicator db: malformed range '{}' for {} ({}) — entry will never match",
+                    sr.range, sr.package, sr.ecosystem
+                ));
+            }
+        }
+        warnings
     }
 
     /// Check if a specific package@version is known malicious
@@ -177,7 +237,9 @@ impl IndicatorDb {
         self.suspicious_range.iter().find(|sr| {
             sr.ecosystem == ecosystem
                 && sr.package == package
-                && version_in_range(version, &sr.range)
+                // Malformed range (None) must not match — validate()
+                // surfaces those as warnings at load time
+                && crate::versioncmp::version_in_range(version, &sr.range) == Some(true)
         })
     }
 
@@ -196,43 +258,6 @@ impl IndicatorDb {
             .map(|mp| ((mp.ecosystem, mp.package.clone()), mp))
             .collect()
     }
-}
-
-/// Simple version range check (supports >=X,<Y format)
-fn version_in_range(version: &str, range: &str) -> bool {
-    let Ok(ver) = semver::Version::parse(version) else {
-        return false;
-    };
-
-    for constraint in range.split(',') {
-        let constraint = constraint.trim();
-        if let Some(bound) = constraint.strip_prefix(">=") {
-            if let Ok(bound_ver) = semver::Version::parse(bound) {
-                if ver < bound_ver {
-                    return false;
-                }
-            }
-        } else if let Some(bound) = constraint.strip_prefix('>') {
-            if let Ok(bound_ver) = semver::Version::parse(bound) {
-                if ver <= bound_ver {
-                    return false;
-                }
-            }
-        } else if let Some(bound) = constraint.strip_prefix("<=") {
-            if let Ok(bound_ver) = semver::Version::parse(bound) {
-                if ver > bound_ver {
-                    return false;
-                }
-            }
-        } else if let Some(bound) = constraint.strip_prefix('<') {
-            if let Ok(bound_ver) = semver::Version::parse(bound) {
-                if ver >= bound_ver {
-                    return false;
-                }
-            }
-        }
-    }
-    true
 }
 
 #[cfg(test)]
@@ -272,12 +297,82 @@ mod tests {
     }
 
     #[test]
-    fn test_version_in_range() {
-        assert!(version_in_range("0.30.2", ">=0.30.0,<0.30.5"));
-        assert!(version_in_range("0.30.0", ">=0.30.0,<0.30.5"));
-        assert!(!version_in_range("0.30.5", ">=0.30.0,<0.30.5"));
-        assert!(!version_in_range("0.29.0", ">=0.30.0,<0.30.5"));
-        assert!(!version_in_range("1.0.0", ">=0.30.0,<0.30.5"));
+    fn test_revocation() {
+        let mut db = IndicatorDb::load().unwrap();
+        assert!(db
+            .check_version(Ecosystem::Npm, "axios", "1.14.1")
+            .is_some());
+
+        let tombstones = IndicatorDb {
+            meta: IndicatorMeta {
+                version: "test".into(),
+                sources: vec![],
+            },
+            malicious_version: vec![],
+            malicious_package: vec![],
+            c2_indicator: vec![],
+            suspicious_range: vec![],
+            revoked: vec![
+                RevokedIndicator {
+                    ecosystem: Ecosystem::Npm,
+                    package: "axios".into(),
+                    version: Some("1.14.1".into()),
+                    reason: "test retraction".into(),
+                },
+                RevokedIndicator {
+                    ecosystem: Ecosystem::Npm,
+                    package: "plain-crypto-js".into(),
+                    version: None,
+                    reason: "test retraction".into(),
+                },
+            ],
+        };
+        db.merge(tombstones);
+
+        assert!(db
+            .check_version(Ecosystem::Npm, "axios", "1.14.1")
+            .is_none());
+        assert!(db
+            .check_package(Ecosystem::Npm, "plain-crypto-js")
+            .is_none());
+        // Other indicators untouched
+        assert!(db
+            .check_version(Ecosystem::Npm, "axios", "0.30.4")
+            .is_some());
+    }
+
+    #[test]
+    fn test_validate_flags_malformed_range() {
+        let mut db = IndicatorDb::load().unwrap();
+        assert!(db.validate().is_empty());
+        db.suspicious_range.push(SuspiciousRange {
+            ecosystem: Ecosystem::Npm,
+            package: "foo".into(),
+            range: "~=1.0".into(),
+            severity: Severity::High,
+            description: "test".into(),
+        });
+        let warnings = db.validate();
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("malformed range"));
+        // And critically: the malformed range matches NOTHING (it used to
+        // match everything)
+        assert!(db.check_range(Ecosystem::Npm, "foo", "1.0.0").is_none());
+    }
+
+    #[test]
+    fn test_check_range_non_semver_version() {
+        let mut db = IndicatorDb::load().unwrap();
+        db.suspicious_range.push(SuspiciousRange {
+            ecosystem: Ecosystem::Pip,
+            package: "requests".into(),
+            range: ">=2.0,<2.5".into(),
+            severity: Severity::High,
+            description: "test".into(),
+        });
+        // PEP 440 two-segment version now matches (semver-only never did)
+        assert!(db.check_range(Ecosystem::Pip, "requests", "2.3").is_some());
+        assert!(db.check_range(Ecosystem::Pip, "requests", "2.6").is_none());
     }
 
     #[test]

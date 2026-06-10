@@ -6,6 +6,42 @@ use supplyify::Config;
 
 const FEED_URL: &str =
     "https://raw.githubusercontent.com/bentheautomator/supplyify-indicators/main/indicators.toml";
+/// Companion checksum published alongside the feed. When present, the
+/// feed body MUST match — a tampered or truncated feed is rejected
+/// outright rather than merged into the local database.
+const FEED_CHECKSUM_URL: &str =
+    "https://raw.githubusercontent.com/bentheautomator/supplyify-indicators/main/indicators.toml.sha256";
+
+/// Verify the feed body against its published sha256, if one exists.
+/// Returns Ok(true) verified, Ok(false) no checksum published, Err on
+/// mismatch (fail closed).
+fn verify_feed_checksum(body: &str) -> Result<bool> {
+    let resp = match reqwest::blocking::get(FEED_CHECKSUM_URL) {
+        Ok(r) if r.status().is_success() => r,
+        _ => return Ok(false),
+    };
+    let published = resp.text()?;
+    let published = published
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .to_lowercase();
+    if published.len() != 64 {
+        return Ok(false);
+    }
+
+    use sha2::{Digest, Sha256};
+    let actual = format!("{:x}", Sha256::digest(body.as_bytes()));
+
+    if actual != published {
+        anyhow::bail!(
+            "indicator feed checksum mismatch (expected {}, got {}) — refusing to merge",
+            published,
+            actual
+        );
+    }
+    Ok(true)
+}
 
 pub fn run(config: &Config) -> Result<()> {
     if !config.quiet {
@@ -33,6 +69,23 @@ pub fn run(config: &Config) -> Result<()> {
     match resp {
         Ok(resp) if resp.status().is_success() => {
             let body = resp.text()?;
+
+            match verify_feed_checksum(&body)? {
+                true => {
+                    if !config.quiet {
+                        eprintln!("  {} Feed checksum verified", "✓".green());
+                    }
+                }
+                false => {
+                    if !config.quiet {
+                        eprintln!(
+                            "  {} Feed has no published checksum — merging unverified content",
+                            "!".yellow()
+                        );
+                    }
+                }
+            }
+
             let remote = IndicatorDb::from_toml(&body)?;
 
             // Track what's new before merging

@@ -21,25 +21,39 @@ fn osv_client() -> &'static reqwest::blocking::Client {
     })
 }
 
-/// Query OSV.dev for known vulnerabilities across a set of dependencies
-pub fn query_batch(deps: &[&Dependency]) -> Vec<Finding> {
-    if deps.is_empty() {
-        return Vec::new();
-    }
+/// Outcome of an OSV lookup. `warnings` non-empty means coverage was
+/// reduced — some or all dependencies were NOT checked against OSV.
+pub struct OsvOutcome {
+    pub findings: Vec<Finding>,
+    pub warnings: Vec<String>,
+}
 
-    let mut all_findings = Vec::new();
+/// Query OSV.dev for known vulnerabilities across a set of dependencies.
+/// Failures are returned as warnings, never printed and never silently
+/// swallowed — the caller decides whether a degraded scan passes.
+pub fn query_batch(deps: &[&Dependency]) -> OsvOutcome {
+    let mut outcome = OsvOutcome {
+        findings: Vec::new(),
+        warnings: Vec::new(),
+    };
+    if deps.is_empty() {
+        return outcome;
+    }
 
     for chunk in deps.chunks(BATCH_SIZE) {
         match query_osv_batch(chunk) {
-            Ok(findings) => all_findings.extend(findings),
+            Ok(findings) => outcome.findings.extend(findings),
             Err(e) => {
-                eprintln!("  Warning: OSV query failed: {}", e);
-                break;
+                outcome.warnings.push(format!(
+                    "OSV query failed for {} dependencies: {} — these were NOT checked online",
+                    chunk.len(),
+                    e
+                ));
             }
         }
     }
 
-    all_findings
+    outcome
 }
 
 fn query_osv_batch(deps: &[&Dependency]) -> Result<Vec<Finding>> {
@@ -226,10 +240,31 @@ fn classify_osv_severity(vuln: &OsvVuln) -> Severity {
     Severity::Medium // Default when severity unknown
 }
 
-fn parse_cvss_score(cvss: &str) -> Option<f64> {
-    // CVSS vector strings end with score or contain it
-    // Try to extract numeric score
-    cvss.split('/').next_back()?.parse().ok()
+/// Parse an OSV `severity[].score` into a numeric CVSS base score.
+///
+/// OSV publishes CVSS *vector strings* (`CVSS:3.1/AV:N/AC:L/.../A:H`),
+/// not numbers — the previous implementation took the last `/` segment
+/// (`A:H`) and failed to parse it, so every CVSS-scored vuln fell through
+/// to the Medium default and critical CVEs did not fail CI.
+fn parse_cvss_score(score: &str) -> Option<f64> {
+    use std::str::FromStr;
+
+    // Some databases do publish a bare number — accept it.
+    if let Ok(n) = score.trim().parse::<f64>() {
+        return Some(n);
+    }
+
+    if score.starts_with("CVSS:4") {
+        return cvss::v4::Vector::from_str(score)
+            .ok()
+            .map(|v| v.score().value());
+    }
+    if score.starts_with("CVSS:3") {
+        return cvss::v3::Base::from_str(score)
+            .ok()
+            .map(|b| b.score().value());
+    }
+    None
 }
 
 fn ecosystem_to_osv(eco: Ecosystem) -> String {
@@ -321,4 +356,80 @@ struct OsvSeverity {
 struct OsvDbSpecific {
     #[serde(default)]
     severity: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn vuln(id: &str, db_severity: Option<&str>, cvss: Option<&str>) -> OsvVuln {
+        OsvVuln {
+            id: id.to_string(),
+            summary: None,
+            details: None,
+            aliases: vec![],
+            references: vec![],
+            severity: cvss.map(|s| {
+                vec![OsvSeverity {
+                    score: s.to_string(),
+                }]
+            }),
+            database_specific: db_severity.map(|s| OsvDbSpecific {
+                severity: Some(s.to_string()),
+            }),
+            affected: vec![],
+        }
+    }
+
+    #[test]
+    fn cvss_vector_strings_parse_to_scores() {
+        // Real-world CVSS 3.1 vector for a 9.8 critical
+        let score =
+            parse_cvss_score("CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H").expect("should parse");
+        assert!((score - 9.8).abs() < 0.05, "got {}", score);
+
+        // Medium-ish vector
+        let score =
+            parse_cvss_score("CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:L/A:N").expect("should parse");
+        assert!((3.0..7.0).contains(&score), "got {}", score);
+
+        // Bare numeric scores still accepted
+        assert_eq!(parse_cvss_score("7.5"), Some(7.5));
+
+        // Garbage does not parse (and must not panic)
+        assert_eq!(parse_cvss_score("A:H"), None);
+    }
+
+    #[test]
+    fn classify_critical_cve_from_cvss_vector() {
+        // No database_specific severity — classification must come from
+        // the CVSS vector. This was the bug: it used to fall through to
+        // Medium and exit 2 instead of 1.
+        let v = vuln(
+            "GHSA-xxxx",
+            None,
+            Some("CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"),
+        );
+        assert_eq!(classify_osv_severity(&v), Severity::Critical);
+    }
+
+    #[test]
+    fn classify_mal_prefix_is_always_critical() {
+        let v = vuln("MAL-2026-1234", None, None);
+        assert_eq!(classify_osv_severity(&v), Severity::Critical);
+    }
+
+    #[test]
+    fn classify_database_specific_takes_precedence() {
+        let v = vuln("GHSA-yyyy", Some("HIGH"), None);
+        assert_eq!(classify_osv_severity(&v), Severity::High);
+        let v = vuln("GHSA-zzzz", Some("MODERATE"), None);
+        assert_eq!(classify_osv_severity(&v), Severity::Medium);
+    }
+
+    #[test]
+    fn classify_unknown_defaults_to_medium() {
+        let v = vuln("GHSA-unknown", None, None);
+        assert_eq!(classify_osv_severity(&v), Severity::Medium);
+    }
 }

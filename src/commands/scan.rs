@@ -10,9 +10,9 @@ pub fn run(config: &Config, path: &str) -> Result<()> {
         anyhow::bail!("Path does not exist: {}", path.display());
     }
 
-    let result = scanner::scan(config, path);
-    let exit_code = result.exit_code();
-    let output = output::format_results(&config.format, &[result]);
+    let result = scanner::scan(&config.scan, path);
+    let exit_code = result.exit_code(&config.scan);
+    let output = output::format_results(config.format, &[result]);
 
     if let Some(ref output_path) = config.output {
         std::fs::write(output_path, &output)?;

@@ -16,7 +16,7 @@
 //! └──────────────────┘      └──────────────────────────┘
 //! ```
 
-use crate::{Config, Dependency, Finding, ScanResult};
+use crate::{Dependency, Finding, ScanOptions, ScanResult};
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
@@ -49,7 +49,7 @@ pub struct PluginManifest {
 
 /// Context passed to plugins during execution
 pub struct PluginContext<'a> {
-    pub config: &'a Config,
+    pub opts: &'a ScanOptions,
     pub project_path: &'a Path,
     pub dependencies: &'a [Dependency],
 }
@@ -76,7 +76,7 @@ pub trait Plugin: Send + Sync {
     fn manifest(&self) -> &PluginManifest;
 
     /// Initialize the plugin (called once at startup)
-    fn init(&mut self, _config: &Config) -> Result<()> {
+    fn init(&mut self, _opts: &ScanOptions) -> Result<()> {
         Ok(())
     }
 
@@ -212,7 +212,6 @@ fn plugin_directory() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Severity;
 
     struct MockPlugin {
         manifest: PluginManifest,

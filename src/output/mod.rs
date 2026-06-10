@@ -1,14 +1,17 @@
 pub mod agent;
 pub mod json;
+pub mod sarif;
 pub mod text;
 
-use crate::ScanResult;
+use crate::{OutputFormat, ScanResult};
 
-/// Format scan results based on format string
-pub fn format_results(format: &str, results: &[ScanResult]) -> String {
+/// Format scan results. Format is a typed enum — unknown formats are a
+/// CLI parse error, never a silent fallback to text.
+pub fn format_results(format: OutputFormat, results: &[ScanResult]) -> String {
     match format {
-        "json" => json::format(results),
-        "agent" => agent::format(results),
-        _ => text::format(results),
+        OutputFormat::Text => text::format(results),
+        OutputFormat::Json => json::format(results),
+        OutputFormat::Agent => agent::format(results),
+        OutputFormat::Sarif => sarif::format(results),
     }
 }

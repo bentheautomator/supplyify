@@ -1,6 +1,6 @@
 [package]
 name = "supplyify"
-version = "0.2.5"
+version = "0.3.0"
 edition = "2021"
 authors = ["Ben The Automator"]
 license = "MIT"
@@ -32,9 +32,12 @@ rayon = "1.10"
 semver = "1.0"
 sha2 = "0.10"
 dirs = "5"
+cvss = "2.2.0"
+tempfile = "3"
 
 [dev-dependencies]
-tempfile = "3"
+assert_cmd = "2.2.2"
+predicates = "3.1.4"
 
 [profile.release]
 opt-level = 3

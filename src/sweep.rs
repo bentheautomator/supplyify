@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 use crate::scanner;
-use crate::{Config, ScanResult};
+use crate::{ScanOptions, ScanResult};
 
 /// Lockfile names that indicate a project root
 const PROJECT_MARKERS: &[&str] = &[
@@ -14,6 +14,7 @@ const PROJECT_MARKERS: &[&str] = &[
     "requirements.txt",
     "poetry.lock",
     "Pipfile.lock",
+    "go.sum",
 ];
 
 /// Find all project directories under a root
@@ -54,7 +55,7 @@ pub fn discover_projects(root: &Path) -> Vec<PathBuf> {
 }
 
 /// Sweep: discover and scan all projects in parallel
-pub fn sweep(config: &Config, root: &Path, parallelism: usize) -> Vec<ScanResult> {
+pub fn sweep(opts: &ScanOptions, root: &Path, parallelism: usize) -> Vec<ScanResult> {
     let projects = discover_projects(root);
 
     rayon::ThreadPoolBuilder::new()
@@ -64,6 +65,6 @@ pub fn sweep(config: &Config, root: &Path, parallelism: usize) -> Vec<ScanResult
 
     projects
         .par_iter()
-        .map(|project_path| scanner::scan(config, project_path))
+        .map(|project_path| scanner::scan(opts, project_path))
         .collect()
 }

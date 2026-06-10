@@ -19,8 +19,10 @@ const SUSPICIOUS_PATTERNS: &[&str] = &[
     "dgram",
 ];
 
-/// Scan node_modules for suspicious postinstall scripts
-pub fn scan(project_path: &Path) -> Vec<Finding> {
+/// Scan node_modules for suspicious postinstall scripts.
+/// `c2_addresses` come from the indicator DB — a lifecycle script that
+/// references known C2 infrastructure is Critical, not Medium.
+pub fn scan(project_path: &Path, c2_addresses: &[String]) -> Vec<Finding> {
     let mut findings = Vec::new();
     let node_modules = project_path.join("node_modules");
 
@@ -45,7 +47,9 @@ pub fn scan(project_path: &Path) -> Vec<Finding> {
                     for scoped_entry in scoped_entries.flatten() {
                         let scoped_pkg_json = scoped_entry.path().join("package.json");
                         if scoped_pkg_json.exists() {
-                            if let Some(finding) = check_package_json(&scoped_pkg_json) {
+                            if let Some(finding) =
+                                check_package_json(&scoped_pkg_json, c2_addresses)
+                            {
                                 findings.push(finding);
                             }
                         }
@@ -55,7 +59,7 @@ pub fn scan(project_path: &Path) -> Vec<Finding> {
             continue;
         }
 
-        if let Some(finding) = check_package_json(&pkg_json) {
+        if let Some(finding) = check_package_json(&pkg_json, c2_addresses) {
             findings.push(finding);
         }
     }
@@ -64,7 +68,7 @@ pub fn scan(project_path: &Path) -> Vec<Finding> {
 }
 
 /// Check a single package.json for suspicious lifecycle scripts
-fn check_package_json(path: &Path) -> Option<Finding> {
+fn check_package_json(path: &Path, c2_addresses: &[String]) -> Option<Finding> {
     let content = std::fs::read_to_string(path).ok()?;
     let json: serde_json::Value = serde_json::from_str(&content).ok()?;
 
@@ -81,9 +85,18 @@ fn check_package_json(path: &Path) -> Option<Finding> {
 
     let lifecycle_keys = ["preinstall", "install", "postinstall"];
     let mut suspicious_scripts = Vec::new();
+    let mut c2_hits: Vec<String> = Vec::new();
 
     for key in &lifecycle_keys {
         if let Some(script) = scripts.get(*key).and_then(|s| s.as_str()) {
+            // Known C2 infrastructure in a lifecycle script — confirmed bad
+            for c2 in c2_addresses {
+                let host = crate::c2_host(c2);
+                if !host.is_empty() && script.contains(host) {
+                    c2_hits.push(host.to_string());
+                }
+            }
+
             let matched: Vec<&&str> = SUSPICIOUS_PATTERNS
                 .iter()
                 .filter(|p| script.contains(**p))
@@ -98,6 +111,34 @@ fn check_package_json(path: &Path) -> Option<Finding> {
                 ));
             }
         }
+    }
+
+    if !c2_hits.is_empty() {
+        return Some(Finding {
+            severity: Severity::Critical,
+            package: name.to_string(),
+            version: version.to_string(),
+            kind: FindingKind::Heuristic("c2_in_lifecycle_script".to_string()),
+            description: format!(
+                "Lifecycle script contacts known C2 infrastructure: {}",
+                c2_hits.join(", ")
+            ),
+            details: FindingDetails {
+                c2: c2_hits,
+                tags: vec![
+                    "heuristic".to_string(),
+                    "postinstall".to_string(),
+                    "c2".to_string(),
+                ],
+                remediation: Some(format!(
+                    "IMMEDIATELY remove {} and treat this machine as compromised — \
+                     its install script references known command-and-control \
+                     infrastructure. Rotate all credentials.",
+                    name
+                )),
+                ..Default::default()
+            },
+        });
     }
 
     if suspicious_scripts.is_empty() {

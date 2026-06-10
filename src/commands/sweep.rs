@@ -4,7 +4,23 @@ use std::path::Path;
 use std::time::Instant;
 
 use supplyify::sweep as sweep_mod;
-use supplyify::{output, Config, Severity};
+use supplyify::{output, Config, ScanResult, Severity};
+
+/// Worst exit code across the sweep, by badness: 1 (findings at/above
+/// fail_on) > 3 (degraded in strict mode) > 2 (lesser findings) > 0.
+fn worst_exit_code(results: &[ScanResult], config: &Config) -> i32 {
+    let rank = |code: i32| match code {
+        1 => 3,
+        3 => 2,
+        2 => 1,
+        _ => 0,
+    };
+    results
+        .iter()
+        .map(|r| r.exit_code(&config.scan))
+        .max_by_key(|c| rank(*c))
+        .unwrap_or(0)
+}
 
 pub fn run(config: &Config, path: &str, parallel: usize) -> Result<()> {
     let sweep_start = Instant::now();
@@ -23,10 +39,14 @@ pub fn run(config: &Config, path: &str, parallel: usize) -> Result<()> {
         );
     }
 
-    let results = sweep_mod::sweep(config, root, parallel);
+    let results = sweep_mod::sweep(&config.scan, root, parallel);
 
-    if config.format != "text" {
-        print!("{}", output::format_results(&config.format, &results));
+    if config.format != supplyify::OutputFormat::Text {
+        print!("{}", output::format_results(config.format, &results));
+        let worst = worst_exit_code(&results, config);
+        if worst != 0 {
+            std::process::exit(worst);
+        }
         return Ok(());
     }
 
@@ -41,8 +61,6 @@ pub fn run(config: &Config, path: &str, parallel: usize) -> Result<()> {
         })
         .max()
         .unwrap_or(20);
-
-    let mut worst_exit = 0;
 
     for result in &results {
         let name = Path::new(&result.project_path)
@@ -79,12 +97,9 @@ pub fn run(config: &Config, path: &str, parallel: usize) -> Result<()> {
             detail,
             width = max_name
         );
-
-        let exit = result.exit_code();
-        if exit > worst_exit {
-            worst_exit = exit;
-        }
     }
+
+    let worst_exit = worst_exit_code(&results, config);
 
     let total_deps: usize = results.iter().map(|r| r.dep_count).sum();
     let total_findings: usize = results.iter().map(|r| r.findings.len()).sum();
@@ -97,14 +112,7 @@ pub fn run(config: &Config, path: &str, parallel: usize) -> Result<()> {
                 .count()
         })
         .sum();
-    let total_ms = sweep_start.elapsed().as_millis();
-    let duration = if total_ms >= 60_000 {
-        format!("{:.1}m", total_ms as f64 / 60_000.0)
-    } else if total_ms >= 1_000 {
-        format!("{:.1}s", total_ms as f64 / 1_000.0)
-    } else {
-        format!("{}ms", total_ms)
-    };
+    let duration = supplyify::format_duration_ms(sweep_start.elapsed().as_millis());
 
     println!(
         "\nSummary: {} projects | {} total deps | {} findings ({} critical) | {}",

@@ -2,12 +2,12 @@ use anyhow::Result;
 use colored::Colorize;
 
 use supplyify::indicators::IndicatorDb;
-use supplyify::Config;
+use supplyify::{Config, OutputFormat};
 
 pub fn run(config: &Config) -> Result<()> {
     let db = IndicatorDb::load()?;
 
-    if config.format == "json" {
+    if config.format == OutputFormat::Json {
         let stats = serde_json::json!({
             "version": db.meta.version,
             "sources": db.meta.sources,
@@ -15,6 +15,7 @@ pub fn run(config: &Config) -> Result<()> {
             "malicious_packages": db.malicious_package.len(),
             "c2_indicators": db.c2_indicator.len(),
             "suspicious_ranges": db.suspicious_range.len(),
+            "revoked": db.revoked.len(),
         });
         println!("{}", serde_json::to_string_pretty(&stats)?);
         return Ok(());

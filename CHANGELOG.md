@@ -2,6 +2,74 @@
 
 All notable changes to supplyify will be documented in this file.
 
+## [0.3.0] - 2026-06-10
+
+A correctness + experimental-detection release. The headline theme: the
+scanner no longer **fails open**. Degraded coverage is now surfaced and,
+under `--strict`, fails the build instead of reporting a false "clean".
+
+### Fixed (false negatives — these let real threats through)
+- **CVSS severity was never parsed** — `parse_cvss_score` split the CVSS
+  *vector string* on `/` and tried to parse the trailing metric (`A:H`)
+  as a number, which always failed. Every OSV vuln without a
+  `database_specific.severity` fell to the Medium default, so 9.8 CVEs
+  exited 2 (warn) instead of 1 (fail CI). Now parses CVSS v3/v4 vectors
+  via the `cvss` crate. Regression tests added (the OSV module had none).
+- **pnpm peer-dep suffixes polluted versions** — keys like
+  `/axios@1.7.2(react@18)` parsed to a bogus version that never
+  exact-matched an indicator. Suffix is now stripped before the version
+  split; pnpm v9 no-leading-slash keys handled too.
+- **Yarn Berry (v2+) lockfiles parsed to zero deps** — classic-format
+  parser silently dropped the whole npm ecosystem. Berry YAML is now
+  detected and parsed.
+- **npm aliased installs** (`alias@npm:real-pkg`) are now matched against
+  the real package name, not the alias.
+- **Suspicious-range matching was semver-only** — pip/Go versions never
+  matched, and a malformed range silently matched *every* version. New
+  `versioncmp` module does ecosystem-tolerant comparison; malformed
+  ranges are surfaced as load-time warnings and match nothing.
+- **Broken dedup** — `Vec::dedup_by` only removed adjacent dupes and
+  `mem::discriminant` collapsed distinct heuristic kinds. Now dedups on a
+  full key, keeping the highest-severity copy.
+
+### Added — fail-closed plumbing
+- `ScanResult` now carries `warnings` + `degraded`. Surfaced in all output
+  formats (`DEGRADED|true` / `WARNING|...` in agent, `⚠` block in text).
+- `--strict` — degraded scans (OSV unreachable, unparseable lockfile, bad
+  indicator DB) exit 3 instead of passing as clean.
+- `--fail-on <severity>` — configurable CI gate threshold.
+- `check` now exits 1 on a hit, queries OSV by default, and consults
+  suspicious ranges — making it usable as a pre-install gate primitive.
+
+### Added — experimental detection
+- **Dependency-injection heuristic** — diffs each lockfile against git
+  HEAD and flags newly-injected transitive deps and version downgrades
+  (the actual shape of the March 2026 axios compromise).
+- **Obfuscation heuristic** — targeted deep scan of *already-flagged*
+  packages for base64 blobs, hex-escape runs, charcode assembly, and
+  eval-of-decoded-data.
+- **C2 cross-referencing** — indicator-DB C2 addresses are now matched
+  against lifecycle scripts and flagged package source (was stored but
+  never used). A hit is Critical.
+- **Layer 3: codemap integration** — `--no-codemap` now does something:
+  runs `codemap security` on flagged packages' installed source.
+- **Go ecosystem** — `go.sum` parser.
+- **SARIF output** (`-f sarif`) — GitHub Code Scanning ingest.
+- **`.supplyify.toml` policy file** — scoped ignore rules with optional
+  expiry, so one noisy finding doesn't push teams to `|| true`.
+- **Indicator tombstones + checksum-verified feed** — retract published
+  indicators via `[[revoked]]`; `update` verifies the feed sha256.
+
+### Changed
+- Library/CLI split: `ScanOptions` (detection) is separate from `Config`
+  (presentation); the scanner returns data instead of printing/exiting.
+- Output format is a typed enum — `-f yaml` is now a CLI error, not a
+  silent fall-through to text.
+- Agent output gained a versioned `SUPPLYIFY|<ver>|<fmt>` header — this is
+  now a parsing contract for gitguard/codemap.
+- `report` subcommand removed (it was a byte-for-byte alias of `scan`).
+- Plugin registry is now actually invoked by the scanner.
+
 ## [0.2.3] - 2026-04-01
 
 ### Fixed

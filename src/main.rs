@@ -1,17 +1,19 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
+use supplyify::{OutputFormat, ScanOptions, Severity};
+
 mod commands;
 
 #[derive(Parser)]
 #[command(name = "supplyify", version, about = "Supply chain attack detection")]
 struct Cli {
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 
-    /// Output format: text (default), json, sarif, agent
-    #[arg(short, long, default_value = "text", global = true)]
-    format: String,
+    /// Output format
+    #[arg(short, long, value_enum, default_value_t = OutputFormat::Text, global = true)]
+    format: OutputFormat,
 
     /// Write output to file (default: stdout)
     #[arg(short, long, global = true)]
@@ -21,7 +23,7 @@ struct Cli {
     #[arg(short, long, global = true)]
     quiet: bool,
 
-    /// Skip Layer 3 codemap analysis
+    /// Skip Layer 3 codemap deep analysis of flagged packages
     #[arg(long, global = true)]
     no_codemap: bool,
 
@@ -33,6 +35,16 @@ struct Cli {
     #[arg(long, global = true)]
     no_osv: bool,
 
+    /// Minimum severity that fails the scan with exit code 1 (lower
+    /// severities exit 2)
+    #[arg(long, value_enum, default_value_t = Severity::High, global = true)]
+    fail_on: Severity,
+
+    /// Fail closed: a degraded scan (OSV unreachable, unparseable
+    /// lockfile) exits 3 instead of passing as clean
+    #[arg(long, global = true)]
+    strict: bool,
+
     /// Check if a newer version of supplyify is available
     #[arg(long, global = true)]
     check_update: bool,
@@ -40,7 +52,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Scan a project for supply chain threats (all 3 layers)
+    /// Scan a project for supply chain threats (all detection layers)
     Scan {
         /// Path to project directory
         #[arg(default_value = ".")]
@@ -56,23 +68,18 @@ enum Commands {
         parallel: usize,
     },
 
-    /// Pull latest indicators from GitHub feed
+    /// Pull latest indicators from the remote feed (checksum-verified)
     Update,
 
-    /// Quick lookup: is this package@version known-bad?
+    /// Quick lookup: is this package@version known-bad? Checks local
+    /// indicators AND OSV.dev (use --no-osv for offline). Exit 1 on hit.
     Check {
-        /// Package query (e.g., axios@1.14.1)
+        /// Package query (e.g., axios@1.14.1 or npm:axios@1.14.1)
         query: String,
     },
 
     /// List current indicator database stats
     Indicators,
-
-    /// Generate formatted report
-    Report {
-        /// Path to project directory
-        path: String,
-    },
 }
 
 fn main() -> Result<()> {
@@ -80,23 +87,33 @@ fn main() -> Result<()> {
 
     if cli.check_update {
         commands::check_update::run();
+        if cli.command.is_none() {
+            return Ok(());
+        }
     }
 
     let config = supplyify::Config {
         format: cli.format,
         output: cli.output,
         quiet: cli.quiet,
-        no_codemap: cli.no_codemap,
-        no_heuristics: cli.no_heuristics,
-        no_osv: cli.no_osv,
+        scan: ScanOptions {
+            osv: !cli.no_osv,
+            heuristics: !cli.no_heuristics,
+            codemap: !cli.no_codemap,
+            strict: cli.strict,
+            fail_on: cli.fail_on,
+        },
     };
 
-    match cli.command {
+    let Some(command) = cli.command else {
+        anyhow::bail!("No command given. Try: supplyify scan .  (or --help)");
+    };
+
+    match command {
         Commands::Scan { path } => commands::scan::run(&config, &path),
         Commands::Sweep { path, parallel } => commands::sweep::run(&config, &path, parallel),
         Commands::Update => commands::update::run(&config),
         Commands::Check { query } => commands::check::run(&config, &query),
         Commands::Indicators => commands::indicators::run(&config),
-        Commands::Report { path } => commands::scan::run(&config, &path),
     }
 }

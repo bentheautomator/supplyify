@@ -85,13 +85,33 @@ pub fn format(results: &[ScanResult]) -> String {
             }
         }
 
+        // Degradation must be loud: "clean" with reduced coverage is not clean
+        if !result.warnings.is_empty() {
+            out.push('\n');
+            for w in &result.warnings {
+                out.push_str(&format!("{} {}\n", "⚠".yellow().bold(), w.yellow()));
+            }
+            if result.degraded {
+                out.push_str(&format!(
+                    "{} Scan coverage was reduced — results above may be incomplete\n",
+                    "⚠".yellow().bold()
+                ));
+            }
+        }
+
         let (critical, high, medium, low) = result.count_by_severity();
         let ecosystems: Vec<String> = result.ecosystems.iter().map(|e| e.to_string()).collect();
+
+        let ignored_note = if result.ignored_count > 0 {
+            format!(" | {} ignored by .supplyify.toml", result.ignored_count)
+        } else {
+            String::new()
+        };
 
         out.push_str(&format!(
             "──────────────────────────────────\n\
              Scanned: {} ({}) | {} deps | {}\n\
-             Results: {} critical, {} high, {} medium, {} low\n",
+             Results: {} critical, {} high, {} medium, {} low{}\n",
             result.project_path,
             if ecosystems.is_empty() {
                 "no lockfiles".to_string()
@@ -104,6 +124,7 @@ pub fn format(results: &[ScanResult]) -> String {
             high,
             medium,
             low,
+            ignored_note,
         ));
     }
 
