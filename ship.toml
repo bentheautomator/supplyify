@@ -1,0 +1,107 @@
+# ship.toml — Release readiness manifest for gitguard
+#
+# This file defines which readiness checks must pass before shipping.
+# Uncomment checks to enable, comment to skip.
+# Any check marked as a comment requires explicit opt-in for your tier.
+#
+# Tier: open-source
+#
+# [project]
+# tier = "open-source"          # internal | team | open-source | product
+# type = "library"    # optional project type for documentation
+
+[project]
+tier = "open-source"
+
+# [checks]
+# Override individual tier defaults here.
+# All fields default to tier settings unless explicitly set.
+#
+# Basic Quality (enabled for all non-internal tiers)
+
+# Open source projects: Community-ready, fully documented
+# tests ✓ | lint ✓ | fmt ✓ | codemap ✓ | security_scan ✓ | docs_freshness ✓
+# changelog ✓ | license ✓ | contributing ✓ | readme_quality ✓
+# version_bump ✓ | env_documented ✓ | ci_pipeline ✓
+tests = true
+lint = true
+fmt = true                # cargo fmt / prettier --write / ruff format etc., absorbed into commit
+codemap = true
+security_scan = true
+docs_freshness = true
+changelog = true
+license = true
+contributing = true
+readme_quality = true
+version_bump = true
+env_documented = true
+ci_pipeline = true
+# known_issues = false    (uncomment to enable)
+# three_doc_standard = false
+# smoke_test = false"
+
+# Deploy + PR settings (all optional)
+# Uncomment and customize for your project.
+#
+# [deploy]
+# pr_base_branch = "development"      # default base branch for `gh pr create`
+#                                     # gitflow-style: feature -> development -> main
+#                                     # falls back to repo default branch when unset
+# smoke_test_cmd = "npm run health-check"
+# smoke_test_cmd = "cargo run -- --health-check"
+# production_branch = "main"          # reserved for future release-pipeline use (not yet wired)
+
+# Workflow + review gates (all optional, #143)
+# Uncomment and tune to enforce review discipline cross-repo.
+#
+# [workflow]
+# versioning         = "manual"             # "manual" (default) | "changesets" (JS/TS — hands CHANGELOG/bump to changesets tooling, #659)
+# integration_branch = "development"        # feature PRs target this; falls back to GH default
+# default_base      = "current"             # #638 — `start`'s default base (also accepts a literal branch name); "current" = repo's HEAD
+# production_branch  = "main"               # release PRs target this (gitguard release)
+# long_lived         = ["main", "development"]
+# auto_sync_after_merge = true              # finish/release fast-forward long_lived
+# max_worktrees      = 8                    # gitguard start --worktree budget (#142)
+# fragment_mode           = false           # #629 phase 1 — opt into fragment-first CHANGELOG (save writes fragments; release aggregates)
+# fragment_dir            = "docs/changelog-fragments"  # default when fragment_mode = true
+# require_human_review    = false           # gitguard merge-pr demands APPROVED review (#143)
+# require_security_review = false           # ship injects Security Review checklist
+# require_senior_review   = false           # ship injects Senior-Developer Review checklist
+# review_checklist        = "default"       # "default" or path to .gitguard/checklist.md
+
+# Codemap security overrides (optional, #153)
+# Document HIGH/CRITICAL findings that are intentional. Each entry requires
+# `path`, `cwe`, `reason`. gitguard ship's codemap gate demotes documented
+# findings to INFO; net-new findings still block.
+#
+# [[checks.security_overrides]]
+# path = "src/executor/eval.ts"
+# cwe = "CWE-95"
+# reason = "Sandboxed executor — user-authored code, audited 2026-05"
+
+# Lifecycle hooks (optional, #159)
+# Auto-cascade steps after each gitguard command. Variables in `args`:
+# $GG_BRANCH (current branch), $GG_REPO (repo path), $GG_PR (last opened PR).
+# Recursion-guarded via GG_IN_HOOK env var. Stop on first failure.
+# Available commands: ship, finish, merge-pr, save, start.
+#
+# [[hooks.ship.post]]
+# steps = [
+#   { run = "sync-branches" },
+#   { run = "verify", args = ["$GG_BRANCH"] },
+# ]
+#
+# [[hooks.finish.post]]
+# steps = [
+#   { run = "gc", args = ["--orphans"] },
+# ]
+#
+# [[hooks.merge-pr.post]]
+# steps = [
+#   { human = "PR merged. Run any deployment tasks now, then press Enter." },
+# ]
+
+# Documentation standards
+# [docs]
+# stale_threshold_days = 30
+# critical_docs = ["ARCHITECTURE.md", "DEPLOYMENT.md", "API.md"]
