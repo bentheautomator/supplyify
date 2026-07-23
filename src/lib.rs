@@ -173,10 +173,11 @@ impl ScanResult {
 
     /// v0.3.0 exit code with configurable `fail_on` severity and `strict`
     /// gating for degraded scans. Exit codes:
-    ///   0 — clean (or findings all strictly below `fail_on`, with no
-    ///       findings at all)
-    ///   1 — one or more findings >= `fail_on`
-    ///   2 — findings present but all strictly below `fail_on` (warn)
+    ///   0 — clean OR all findings are strictly below `fail_on` (do not
+    ///       block — the whole point of --fail-on is to tell the caller
+    ///       what severity blocks; anything below that surfaces in the
+    ///       report but exits 0 so shell gates pass)
+    ///   1 — one or more findings at or above `fail_on`
     ///   3 — strict mode AND scan was degraded (no findings gate applies
     ///       because coverage was incomplete)
     pub fn exit_code_v3(&self, fail_on: Severity, strict: bool) -> i32 {
@@ -185,8 +186,6 @@ impl ScanResult {
         }
         if self.findings.iter().any(|f| f.severity >= fail_on) {
             1
-        } else if !self.findings.is_empty() {
-            2
         } else {
             0
         }
@@ -251,8 +250,12 @@ mod tests {
 
     #[test]
     fn exit_code_legacy_matches_default_high() {
+        // Legacy exit_code() delegates to exit_code_v3(High, false) so its
+        // semantics match the v0.3.0+ contract: below-fail-on findings exit 0
+        // (was exit 2 pre-0.3.0, changed to align with --fail-on being a
+        // "what blocks" gate rather than a "was anything found at all" gate).
         assert_eq!(r(vec![Severity::High], false).exit_code(), 1);
-        assert_eq!(r(vec![Severity::Medium], false).exit_code(), 2);
+        assert_eq!(r(vec![Severity::Medium], false).exit_code(), 0);
         assert_eq!(r(vec![], false).exit_code(), 0);
     }
 
@@ -260,16 +263,19 @@ mod tests {
     fn exit_code_v3_fail_on_high_default_gate() {
         let none = r(vec![], false);
         assert_eq!(none.exit_code_v3(Severity::High, false), 0);
+        // Medium is below the fail_on=High threshold — do not block.
         let medium = r(vec![Severity::Medium], false);
-        assert_eq!(medium.exit_code_v3(Severity::High, false), 2);
+        assert_eq!(medium.exit_code_v3(Severity::High, false), 0);
         let high = r(vec![Severity::High], false);
         assert_eq!(high.exit_code_v3(Severity::High, false), 1);
     }
 
     #[test]
-    fn exit_code_v3_fail_on_critical_lets_high_warn() {
+    fn exit_code_v3_fail_on_critical_lets_high_pass() {
+        // With --fail-on critical, only Critical blocks; High is now below
+        // threshold and exits 0.
         let high = r(vec![Severity::High], false);
-        assert_eq!(high.exit_code_v3(Severity::Critical, false), 2);
+        assert_eq!(high.exit_code_v3(Severity::Critical, false), 0);
         let crit = r(vec![Severity::Critical], false);
         assert_eq!(crit.exit_code_v3(Severity::Critical, false), 1);
     }
