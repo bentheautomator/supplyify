@@ -51,7 +51,7 @@ impl std::fmt::Display for Severity {
 impl std::str::FromStr for Severity {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_ascii_lowercase().as_str() {
+        match s.trim().to_ascii_lowercase().as_str() {
             "low" => Ok(Severity::Low),
             "medium" => Ok(Severity::Medium),
             "high" => Ok(Severity::High),
@@ -164,11 +164,30 @@ impl ScanResult {
         }
     }
 
-    /// Legacy exit code (backwards compatible): fails on High+, warns on
-    /// Medium/Low only. Preserved so pre-v0.3.0 embeddings that call this
-    /// directly keep the same semantics.
+    /// Legacy exit code, preserved verbatim from pre-0.3.0 so in-process
+    /// consumers that call this directly see the same verdict they always
+    /// did:
+    ///   0 — no findings at all
+    ///   1 — any finding at High or Critical
+    ///   2 — findings present but all below High (the "was anything found?"
+    ///       signal older CI configs rely on)
+    ///
+    /// The v0.3.0 CLI (`scan` / `sweep`) uses `exit_code_v3` with the
+    /// user's `--fail-on` + `--strict` flags, which lets shell gates treat
+    /// below-fail-on findings as pass (exit 0). Do NOT call this from new
+    /// code — call `exit_code_v3(fail_on, strict)` directly.
+    #[deprecated(
+        since = "0.3.0",
+        note = "call exit_code_v3(fail_on, strict) instead; this preserves pre-0.3.0 semantics for in-process consumers"
+    )]
     pub fn exit_code(&self) -> i32 {
-        self.exit_code_v3(Severity::High, false)
+        if self.findings.iter().any(|f| f.severity >= Severity::High) {
+            1
+        } else if !self.findings.is_empty() {
+            2
+        } else {
+            0
+        }
     }
 
     /// v0.3.0 exit code with configurable `fail_on` severity and `strict`
@@ -249,13 +268,16 @@ mod tests {
     }
 
     #[test]
-    fn exit_code_legacy_matches_default_high() {
-        // Legacy exit_code() delegates to exit_code_v3(High, false) so its
-        // semantics match the v0.3.0+ contract: below-fail-on findings exit 0
-        // (was exit 2 pre-0.3.0, changed to align with --fail-on being a
-        // "what blocks" gate rather than a "was anything found at all" gate).
+    #[allow(deprecated)]
+    fn exit_code_legacy_preserves_pre_0_3_0_semantics() {
+        // exit_code() is the pre-0.3.0 verdict path preserved verbatim so
+        // in-process consumers (crate embedders) see no behavior change on
+        // upgrade. It has its own semantics distinct from --fail-on:
+        //   0 clean, 1 High+, 2 findings below High (the "found anything?"
+        //   signal).
+        // v0.3.0 CLI callers get the looser semantic via exit_code_v3.
         assert_eq!(r(vec![Severity::High], false).exit_code(), 1);
-        assert_eq!(r(vec![Severity::Medium], false).exit_code(), 0);
+        assert_eq!(r(vec![Severity::Medium], false).exit_code(), 2);
         assert_eq!(r(vec![], false).exit_code(), 0);
     }
 
