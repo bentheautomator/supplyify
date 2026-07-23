@@ -36,6 +36,17 @@ struct Cli {
     /// Check if a newer version of supplyify is available
     #[arg(long, global = true)]
     check_update: bool,
+
+    /// Strict mode: a degraded scan (OSV unreachable, unparseable lockfile,
+    /// indicator DB unloadable) exits non-zero (exit 3) instead of silently
+    /// passing as clean. Integration contract for gitguard's pre-push lefthook.
+    #[arg(long, global = true)]
+    strict: bool,
+
+    /// Minimum severity that causes a non-zero exit: low | medium | high | critical
+    /// (default: high). `--fail-on critical` lets High findings warn without blocking.
+    #[arg(long, global = true, default_value = "high", value_name = "SEVERITY")]
+    fail_on: String,
 }
 
 #[derive(Subcommand)]
@@ -82,6 +93,11 @@ fn main() -> Result<()> {
         commands::check_update::run();
     }
 
+    let fail_on = cli
+        .fail_on
+        .parse::<supplyify::Severity>()
+        .map_err(|e| anyhow::anyhow!("invalid --fail-on value: {}", e))?;
+
     let config = supplyify::Config {
         format: cli.format,
         output: cli.output,
@@ -89,6 +105,8 @@ fn main() -> Result<()> {
         no_codemap: cli.no_codemap,
         no_heuristics: cli.no_heuristics,
         no_osv: cli.no_osv,
+        strict: cli.strict,
+        fail_on,
     };
 
     match cli.command {

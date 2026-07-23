@@ -11,7 +11,7 @@ pub fn run(config: &Config, path: &str) -> Result<()> {
     }
 
     let result = scanner::scan(config, path);
-    let exit_code = result.exit_code();
+    let exit_code = result.exit_code_v3(config.fail_on, config.strict);
     let output = output::format_results(&config.format, &[result]);
 
     if let Some(ref output_path) = config.output {

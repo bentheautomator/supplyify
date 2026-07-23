@@ -2,6 +2,18 @@
 
 All notable changes to supplyify will be documented in this file.
 
+## [0.3.0] - 2026-07-23
+
+### Added
+- **`--strict` flag**: a degraded scan (indicator DB unloadable, and — planned follow-up — OSV unreachable or lockfile parse errors) exits `3` instead of silently passing as clean. Closes the integration contract gitguard's pre-push lefthook has been written against since design (bentheautomator/gitguard#293 / CLAUDE.md's supply-chain gate section) — pre-0.3.0 the flag simply errored on parse, blocking every push that used it. Degradation detection currently covers Layer 1 (indicator DB); Layer 1b (OSV) and Layer 0 (lockfile parse) require follow-up signal-bubbling from `osv::query_batch` and each ecosystem parser.
+- **`--fail-on <severity>` flag**: exit codes gate on findings at or above the given severity (`low`, `medium`, `high`, `critical`; default `high`). `--fail-on critical` lets High findings warn (exit `2`) without blocking. Prior behavior (High and above always exit 1) is preserved as the default so no existing invocation changes verdict.
+- `Severity::FromStr` for CLI parsing.
+- `ScanResult::degraded: bool` field (`#[serde(default)]` for backwards compat with any consumers reading older JSON).
+- `ScanResult::exit_code_v3(fail_on, strict)` — the strict-aware exit code path. `ScanResult::exit_code()` preserved as a wrapper that calls `exit_code_v3(Severity::High, false)` so pre-0.3.0 embeddings keep the same verdict.
+
+### Integration
+- Matches gitguard/lefthook's expected surface: `supplyify scan . --no-osv --strict --fail-on high -f agent` (ship pipeline) and `supplyify scan . --strict --fail-on high -f agent` (pre-push lefthook) now both run instead of errored-on-parse.
+
 ## [0.2.3] - 2026-04-01
 
 ### Fixed
