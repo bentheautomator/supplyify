@@ -22,6 +22,9 @@ pub fn scan(config: &Config, path: &Path) -> ScanResult {
                 dep_count: 0,
                 findings: vec![],
                 duration_ms: start.elapsed().as_millis(),
+                // v0.3.0: indicator-DB failure means Layer 1 coverage is zero.
+                // Under `--strict` this is exit 3 rather than silent exit 0.
+                degraded: true,
             };
         }
     };
@@ -127,7 +130,7 @@ pub fn scan(config: &Config, path: &Path) -> ScanResult {
     }
 
     // Sort findings by severity (critical first)
-    findings.sort_by(|a, b| b.severity.cmp(&a.severity));
+    findings.sort_by_key(|f| std::cmp::Reverse(f.severity));
 
     // Dedup: same package+version+kind
     findings.dedup_by(|a, b| {
@@ -142,5 +145,12 @@ pub fn scan(config: &Config, path: &Path) -> ScanResult {
         dep_count,
         findings,
         duration_ms: start.elapsed().as_millis(),
+        // Layer 1a (indicator matching) succeeded — we got here — and Layer 2
+        // (heuristics) either ran or was explicitly opted out. OSV degradation
+        // detection is a follow-up (would need osv::query_batch to bubble up a
+        // "network unreachable" signal instead of returning empty findings).
+        // ponytail: minimum viable v0.3.0 flags-plumbing; wider degradation
+        // detection when a real OSV outage motivates it.
+        degraded: false,
     }
 }

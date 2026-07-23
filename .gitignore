@@ -1,2 +1,6 @@
 /target
 .fastembed_cache/
+.gitguard/
+
+# Codemap cache (auto-generated)
+.codemap/

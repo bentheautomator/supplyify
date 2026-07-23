@@ -2,6 +2,18 @@
 
 All notable changes to supplyify will be documented in this file.
 
+## [0.3.0] - 2026-07-23
+
+### Added
+- **`--strict` flag** (v0.3.0 scope: **indicator DB degradation only**): when `IndicatorDb::load()` fails at scan start, the whole Layer 1 coverage is zero — under `--strict` this exits `3` instead of silently passing as clean. Closes the integration contract gitguard's pre-push lefthook has been written against since design (bentheautomator/gitguard#293 / CLAUDE.md's supply-chain gate section) — pre-0.3.0 the flag simply errored on parse, blocking every push that used it. **Not yet covered by --strict** (tracked as follow-up): OSV.dev unreachable (needs `osv::query_batch` to bubble network errors instead of silently returning empty findings), lockfile parse errors (needs each ecosystem parser to distinguish "no lockfile" from "found but malformed"). The `strict` boolean is wired end-to-end (Config → ScanResult.exit_code_v3 → CLI exit) so those follow-ups are pure signal-bubbling, no API changes.
+- **`--fail-on <severity>` flag**: exit codes gate on findings at or above the given severity (`low`, `medium`, `high`, `critical`; default `high`). Findings BELOW `fail_on` exit `0` — the whole point of the flag is to tell the caller what blocks; anything below that surfaces in the report but shell gates pass. `--fail-on critical` lets High findings surface without blocking. **Behavior change from pre-0.3.0**: the old `exit_code()` returned `2` for any-finding-below-High. That "was anything found at all" signal made shell gates (lefthook, ci) fail on Medium/Low findings that the user explicitly asked to demote via `--fail-on high`. Legacy `exit_code()` now aliases to `exit_code_v3(High, false)` so pre-0.3.0 in-process embeddings see the new (looser) semantics too — a real behavior change, called out here to avoid silent surprise. Callers that need the old "found anything?" signal should count `findings.len()` directly.
+- `Severity::FromStr` for CLI parsing.
+- `ScanResult::degraded: bool` field (`#[serde(default)]` for backwards compat with any consumers reading older JSON).
+- `ScanResult::exit_code_v3(fail_on, strict)` — the strict-aware exit code path. `ScanResult::exit_code()` preserved as a wrapper that calls `exit_code_v3(Severity::High, false)` so pre-0.3.0 embeddings keep the same verdict.
+
+### Integration
+- Matches gitguard/lefthook's expected surface: `supplyify scan . --no-osv --strict --fail-on high -f agent` (ship pipeline) and `supplyify scan . --strict --fail-on high -f agent` (pre-push lefthook) now both run instead of errored-on-parse.
+
 ## [0.2.3] - 2026-04-01
 
 ### Fixed

@@ -80,7 +80,7 @@ pub fn run(config: &Config, path: &str, parallel: usize) -> Result<()> {
             width = max_name
         );
 
-        let exit = result.exit_code();
+        let exit = result.exit_code_v3(config.fail_on, config.strict);
         if exit > worst_exit {
             worst_exit = exit;
         }

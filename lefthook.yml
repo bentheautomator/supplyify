@@ -1,3 +1,8 @@
+# Skip all hooks while gitguard ship is running its pipeline.
+# Closes the double-test/double-lint problem (#183).
+skip:
+  - run: test -n "${GITGUARD_SHIP_IN_PROGRESS:-}"
+
 pre-commit:
   commands:
     fmt:
