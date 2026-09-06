@@ -1,0 +1,14 @@
+
+# Rust build hygiene (fleet-wide, 2026-09-06). Rationale + measurements: honeycomb
+# docs/specs/2026-09-06-fleet-tooling-wave.prd.md §7a (secrify/target hit 6.8 GB: 21 stale copies
+# of one crate, 1.2 GB incremental state, full debuginfo on every dep).
+# - incremental off: agents build once and leave; flip to true locally if you iterate by hand.
+# - line-tables-only: backtraces still resolve; ~half the debug artifact size.
+[build]
+incremental = false
+
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.test]
+debug = "line-tables-only"
