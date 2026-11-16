@@ -8,8 +8,9 @@ pre-commit:
     fmt:
       glob: "*.rs"
       # rustfmt, not cargo fmt: cargo fmt formats the whole workspace even with -- <file>.
-      # Edition matches Cargo.toml (2021).
-      run: rustfmt --edition 2021 {staged_files}
+      # Edition matches Cargo.toml (2021). skip_children: rustfmt otherwise follows
+      # `mod x;` into child files, staged or not.
+      run: rustfmt --edition 2021 --config skip_children=true {staged_files}
       stage_fixed: true
     clippy:
       glob: "*.rs"

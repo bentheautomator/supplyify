@@ -5,7 +5,7 @@ All notable changes to supplyify will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
-- **lefthook**: pre-commit `fmt` touches only staged files. `cargo fmt && git add -u` (formatted and restaged the whole workspace) replaced by `rustfmt --edition 2021 {staged_files}` with `stage_fixed: true` (#2).
+- **lefthook**: pre-commit `fmt` touches only staged files. `cargo fmt && git add -u` (formatted and restaged the whole workspace) replaced by `rustfmt --edition 2021 --config skip_children=true {staged_files}` with `stage_fixed: true` (#2).
 
 ## [0.3.0] - 2026-07-23
 
