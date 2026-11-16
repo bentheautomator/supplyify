@@ -7,7 +7,10 @@ pre-commit:
   commands:
     fmt:
       glob: "*.rs"
-      run: cargo fmt && git add -u -- "*.rs"
+      # rustfmt, not cargo fmt: cargo fmt formats the whole workspace even with -- <file>.
+      # Edition matches Cargo.toml (2021).
+      run: rustfmt --edition 2021 {staged_files}
+      stage_fixed: true
     clippy:
       glob: "*.rs"
       run: cargo clippy -- -D warnings
